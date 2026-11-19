@@ -1,0 +1,36 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@covalent/database": "^1.0.0",
+    "@covalent/shared": "^1.0.0",
+    "bcryptjs": "^3.0.3",
+    "jose": "^6.2.18",
+    "lib0": "^0.2.120",
+    "lucide-react": "^1.76.0",
+    "next": "16.4.6",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "y-indexeddb": "^9.0.12",
+    "yjs": "^13.6.33",
+    "zustand": "^5.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "4.3.3",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.6",
+    "tailwindcss": "4.3.3",
+    "typescript": "^5"
+  }
+}

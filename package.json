@@ -1,0 +1,14 @@
+{
+  "name": "covalent-workspace",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace=apps/web",
+    "dev:realtime": "npm run dev --workspace=apps/realtime",
+    "db:generate": "npm run generate --workspace=packages/database",
+    "db:push": "npm run push --workspace=packages/database"
+  }
+}
