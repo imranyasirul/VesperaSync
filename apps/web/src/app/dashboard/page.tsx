@@ -17,7 +17,7 @@ import {
   UserPlus,
   Trash2,
 } from "lucide-react";
-import { useLanguage } from "@/context/LanguageContext";
+import { useWorkspaceTranslations } from "@/context/workspaceTranslations";
 import { LanguageSelector } from "@/components/LanguageSelector";
 
 interface DocItem {
@@ -57,8 +57,7 @@ interface WorkspaceData {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { t } = useLanguage();
-  const labels = t as unknown as Record<string, string>;
+  const wt = useWorkspaceTranslations();
 
   const [userName, setUserName] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceData[]>([]);
@@ -167,7 +166,7 @@ export default function DashboardPage() {
       if (!res.ok) {
         setMemberFeedback({
           type: "error",
-          text: data.error || "সদস্য যুক্ত করা যায়নি",
+          text: data.error || wt.memberInviteFailed,
         });
         return;
       }
@@ -195,7 +194,7 @@ export default function DashboardPage() {
       setInviteEmail("");
       setMemberFeedback({
         type: "success",
-        text: `${data.member.user.name} (${inviteRole}) যুক্ত হয়েছেন`,
+        text: `${data.member.user.name} (${inviteRole}) ${wt.memberJoined}`,
       });
       setTimeout(() => setMemberFeedback(null), 3500);
     } finally {
@@ -290,7 +289,7 @@ export default function DashboardPage() {
       <div className="min-h-screen bg-slate-950 text-slate-300 flex items-center justify-center">
         <div className="flex items-center gap-3 text-sm font-medium">
           <Sparkles className="h-5 w-5 text-indigo-400 animate-spin" />
-          VesperaSync Command Center loading...
+          {wt.loadingDashboard}
         </div>
       </div>
     );
@@ -328,7 +327,7 @@ export default function DashboardPage() {
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-rose-950/50 border border-slate-800 hover:border-rose-500/40 text-xs text-slate-300 hover:text-rose-300 transition cursor-pointer"
             >
               <LogOut className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">{labels.logoutBtn || "Sign Out"}</span>
+              <span className="hidden sm:inline">{wt.logoutBtn}</span>
             </button>
           </div>
         </div>
@@ -338,14 +337,14 @@ export default function DashboardPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl lg:text-3xl font-extrabold tracking-tight">
-              {labels.dashboardTitle || "Engineering Command Center"}
+              {wt.dashboardTitle}
             </h1>
             <p className="text-xs text-slate-400 mt-1">
-              Role:{" "}
+              {wt.roleLabel}:{" "}
               <span className="text-indigo-400 font-semibold">
                 {currentWs?.myRole || "EDITOR"}
               </span>{" "}
-              • CRDT Binary Sync Ready
+              • {wt.crdtSyncReady}
             </p>
           </div>
 
@@ -355,7 +354,7 @@ export default function DashboardPage() {
                 type="text"
                 value={newDocTitle}
                 onChange={(e) => setNewDocTitle(e.target.value)}
-                placeholder={labels.newDocBtn || "New CRDT Document"}
+                placeholder={wt.newDocBtn}
                 className="px-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs sm:text-sm text-slate-100 focus:outline-none focus:border-indigo-500 w-56 sm:w-64"
               />
               <button
@@ -364,7 +363,7 @@ export default function DashboardPage() {
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs sm:text-sm font-semibold shadow-lg shadow-indigo-600/20 transition cursor-pointer disabled:opacity-50"
               >
                 <Plus className="h-4 w-4" />
-                <span>{labels.newDocBtn || "New CRDT Document"}</span>
+                <span>{wt.newDocBtn}</span>
               </button>
             </form>
           )}
@@ -373,7 +372,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-md">
             <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
-              <span>{labels.activeDocs || "Active Documents"}</span>
+              <span>{wt.activeDocs}</span>
               <FileText className="h-4 w-4 text-indigo-400" />
             </div>
             <div className="text-2xl font-extrabold">
@@ -383,7 +382,7 @@ export default function DashboardPage() {
 
           <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-md">
             <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
-              <span>{labels.teamMembers || "Workspace Members"}</span>
+              <span>{wt.teamMembers}</span>
               <Users className="h-4 w-4 text-emerald-400" />
             </div>
             <div className="text-2xl font-extrabold">
@@ -393,7 +392,7 @@ export default function DashboardPage() {
 
           <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-md">
             <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
-              <span>{labels.auditLogs || "Security Audit Trail"}</span>
+              <span>{wt.auditLogs}</span>
               <ShieldAlert className="h-4 w-4 text-cyan-400" />
             </div>
             <div className="text-2xl font-extrabold">
@@ -407,7 +406,7 @@ export default function DashboardPage() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FileText className="h-4 w-4 text-indigo-400" />
-                {labels.activeDocs || "Active Documents"}
+                {wt.activeDocs}
               </h2>
 
               <div className="relative">
@@ -416,35 +415,41 @@ export default function DashboardPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Filter documents..."
+                  placeholder={wt.filterDocsPlaceholder}
                   className="pl-8 pr-3 py-1.5 rounded-lg bg-slate-950/90 border border-slate-800 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 w-full sm:w-52"
                 />
               </div>
             </div>
 
             <div className="space-y-3">
-              {filteredDocs.map((doc) => (
-                <Link
-                  key={doc.id}
-                  href={`/document/${doc.id}`}
-                  className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-indigo-500/50 flex items-center justify-between transition group"
-                >
-                  <div>
-                    <div className="font-semibold text-sm text-slate-100 group-hover:text-indigo-300 transition">
-                      {doc.title}
+              {filteredDocs.length === 0 ? (
+                <div className="p-6 rounded-xl bg-slate-950/40 border border-slate-800/60 text-center text-xs text-slate-500">
+                  {wt.noDocsFound}
+                </div>
+              ) : (
+                filteredDocs.map((doc) => (
+                  <Link
+                    key={doc.id}
+                    href={`/document/${doc.id}`}
+                    className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 hover:border-indigo-500/50 flex items-center justify-between transition group"
+                  >
+                    <div>
+                      <div className="font-semibold text-sm text-slate-100 group-hover:text-indigo-300 transition">
+                        {doc.title}
+                      </div>
+                      <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                        ID: {doc.id.slice(0, 10)}... • v{doc.version}
+                      </div>
                     </div>
-                    <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                      ID: {doc.id.slice(0, 10)}... • v{doc.version}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-medium">
+                        {wt.crdtReadyBadge}
+                      </span>
+                      <ArrowUpRight className="h-4 w-4 text-slate-500 group-hover:text-indigo-400 transition" />
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-medium">
-                      CRDT Ready
-                    </span>
-                    <ArrowUpRight className="h-4 w-4 text-slate-500 group-hover:text-indigo-400 transition" />
-                  </div>
-                </Link>
-              ))}
+                  </Link>
+                ))
+              )}
             </div>
           </div>
 
@@ -452,7 +457,7 @@ export default function DashboardPage() {
             <div className="p-6 rounded-2xl bg-slate-900/50 border border-slate-800/80 backdrop-blur-xl space-y-4">
               <h2 className="text-base font-bold flex items-center gap-2">
                 <Users className="h-4 w-4 text-emerald-400" />
-                {labels.teamMembers || "Workspace Members"}
+                {wt.teamMembers}
               </h2>
 
               {currentWs?.myRole !== "VIEWER" && (
@@ -463,7 +468,7 @@ export default function DashboardPage() {
                       required
                       value={inviteEmail}
                       onChange={(e) => setInviteEmail(e.target.value)}
-                      placeholder="colleague@company.com"
+                      placeholder={wt.invitePlaceholder}
                       className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-950/90 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
                     />
                     <select
@@ -480,7 +485,6 @@ export default function DashboardPage() {
                       type="submit"
                       disabled={inviting}
                       className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
-                      title="Invite Member"
                     >
                       <UserPlus className="h-3.5 w-3.5" />
                     </button>
@@ -535,7 +539,6 @@ export default function DashboardPage() {
                           <button
                             onClick={() => handleRemoveMember(m.id)}
                             className="p-1 rounded-md hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition cursor-pointer"
-                            title="Remove Member"
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>
@@ -554,7 +557,7 @@ export default function DashboardPage() {
             <div className="p-6 rounded-2xl bg-slate-900/50 border border-slate-800/80 backdrop-blur-xl space-y-4">
               <h2 className="text-base font-bold flex items-center gap-2">
                 <ShieldAlert className="h-4 w-4 text-cyan-400" />
-                {labels.auditLogs || "Security Audit Trail"}
+                {wt.auditLogs}
               </h2>
               <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
                 {currentWs?.auditLogs.map((log) => (
@@ -564,7 +567,7 @@ export default function DashboardPage() {
                   >
                     <div className="font-mono text-[11px] text-cyan-300">{log.action}</div>
                     <div className="flex items-center justify-between text-[10px] text-slate-500">
-                      <span>{log.actor?.name || "System"}</span>
+                      <span>{log.actor?.name || wt.systemActor}</span>
                       <span className="flex items-center gap-1">
                         <Clock className="h-3 w-3" />
                         {new Date(log.createdAt).toLocaleTimeString()}

@@ -27,6 +27,8 @@ import {
   Check,
   Gauge,
 } from "lucide-react";
+import { useWorkspaceTranslations } from "@/context/workspaceTranslations";
+import { LanguageSelector } from "@/components/LanguageSelector";
 
 const MSG_SYNC = 0;
 const MSG_AWARENESS = 1;
@@ -59,6 +61,7 @@ interface PeerPresence {
 export default function DocumentEditorPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const wt = useWorkspaceTranslations();
   const docId = params.id;
 
   const [docMeta, setDocMeta] = useState<DocMetadata | null>(null);
@@ -452,7 +455,7 @@ export default function DocumentEditorPage() {
       <div className="min-h-screen bg-slate-950 text-slate-300 flex items-center justify-center">
         <div className="flex items-center gap-3 text-sm font-medium">
           <Sparkles className="h-5 w-5 text-indigo-400 animate-spin" />
-          Initializing VesperaSync CRDT Engine...
+          {wt.loadingEditor}
         </div>
       </div>
     );
@@ -482,7 +485,7 @@ export default function DocumentEditorPage() {
             <Link
               href="/dashboard"
               className="p-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 transition"
-              title="Back to Dashboard"
+              title={wt.backToDashboard}
             >
               <ArrowLeft className="h-4 w-4" />
             </Link>
@@ -498,52 +501,52 @@ export default function DocumentEditorPage() {
                 disabled={role === "VIEWER"}
                 onChange={(e) => setTitleInput(e.target.value)}
                 onBlur={handleTitleBlur}
-                className="bg-transparent font-bold text-sm sm:text-base text-slate-100 focus:outline-none focus:border-b focus:border-indigo-500 truncate max-w-[160px] sm:max-w-sm"
+                className="bg-transparent font-bold text-sm sm:text-base text-slate-100 focus:outline-none focus:border-b focus:border-indigo-500 truncate max-w-[140px] sm:max-w-xs"
               />
               <div className="text-[11px] text-slate-500 flex items-center gap-2">
                 <span>{docMeta?.workspace.name}</span>
-                {savingTitle && <span className="text-indigo-400">• Saving title...</span>}
+                {savingTitle && <span className="text-indigo-400">• {wt.savingTitle}</span>}
               </div>
             </div>
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <LanguageSelector />
+
             <button
               onClick={handleCopyShareLink}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-200 transition cursor-pointer"
-              title="Copy document link for live collaboration"
             >
               {copiedLink ? (
                 <>
                   <Check className="h-3.5 w-3.5 text-emerald-400" />
-                  <span className="text-emerald-300">Copied</span>
+                  <span className="text-emerald-300">{wt.copiedBtn}</span>
                 </>
               ) : (
                 <>
                   <Share2 className="h-3.5 w-3.5 text-indigo-400" />
-                  <span>Share</span>
+                  <span>{wt.shareBtn}</span>
                 </>
               )}
             </button>
 
             <button
               onClick={handleExportMarkdown}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-200 transition cursor-pointer"
-              title="Export document as Markdown (.md)"
+              className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-200 transition cursor-pointer"
             >
               <Download className="h-3.5 w-3.5 text-cyan-400" />
-              <span>Export .md</span>
+              <span>{wt.exportMdBtn}</span>
             </button>
 
             <div
-              className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-medium ${
+              className={`hidden xl:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-medium ${
                 idbSynced
                   ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-300"
                   : "bg-slate-900 border-slate-800 text-slate-400"
               }`}
             >
               <HardDriveDownload className="h-3.5 w-3.5" />
-              <span>{idbSynced ? "Offline Ready" : "Indexing..."}</span>
+              <span>{idbSynced ? wt.offlineReady : wt.indexing}</span>
             </div>
 
             <div
@@ -558,17 +561,17 @@ export default function DocumentEditorPage() {
               {connectionState === "connected" ? (
                 <>
                   <Wifi className="h-3.5 w-3.5 text-emerald-400" />
-                  <span>Binary Sync Live</span>
+                  <span>{wt.binarySyncLive}</span>
                 </>
               ) : connectionState === "connecting" ? (
                 <>
                   <Activity className="h-3.5 w-3.5 animate-pulse" />
-                  <span>Connecting...</span>
+                  <span>{wt.connecting}</span>
                 </>
               ) : (
                 <>
                   <WifiOff className="h-3.5 w-3.5" />
-                  <span>Offline Mode</span>
+                  <span>{wt.offlineMode}</span>
                 </>
               )}
             </div>
@@ -581,7 +584,7 @@ export default function DocumentEditorPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-slate-400 flex items-center gap-1.5 mr-1">
               <Users className="h-3.5 w-3.5 text-indigo-400" />
-              Live Collaborators ({peers.length}):
+              {wt.liveCollaborators} ({peers.length}):
             </span>
 
             {peers.map((peer) => (
@@ -594,7 +597,7 @@ export default function DocumentEditorPage() {
                   style={{ backgroundColor: peer.color }}
                 />
                 <span className="font-medium text-slate-200">
-                  {peer.name} {peer.isSelf ? "(You)" : ""}
+                  {peer.name} {peer.isSelf ? wt.youTag : ""}
                 </span>
                 <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded">
                   pos:{peer.cursorIndex}
@@ -610,7 +613,7 @@ export default function DocumentEditorPage() {
                   onClick={handleUndo}
                   disabled={!canUndo}
                   className="p-1.5 rounded-md hover:bg-slate-800 text-slate-300 disabled:opacity-30 transition cursor-pointer"
-                  title="CRDT Local Undo"
+                  title={wt.undoTooltip}
                 >
                   <Undo2 className="h-3.5 w-3.5" />
                 </button>
@@ -618,7 +621,7 @@ export default function DocumentEditorPage() {
                   onClick={handleRedo}
                   disabled={!canRedo}
                   className="p-1.5 rounded-md hover:bg-slate-800 text-slate-300 disabled:opacity-30 transition cursor-pointer"
-                  title="CRDT Local Redo"
+                  title={wt.redoTooltip}
                 >
                   <Redo2 className="h-3.5 w-3.5" />
                 </button>
@@ -628,7 +631,7 @@ export default function DocumentEditorPage() {
             {role === "VIEWER" && (
               <div className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1 rounded-lg">
                 <Lock className="h-3.5 w-3.5" />
-                <span>Read-Only Viewer</span>
+                <span>{wt.readOnlyViewer}</span>
               </div>
             )}
           </div>
@@ -640,16 +643,16 @@ export default function DocumentEditorPage() {
           <div className="px-6 py-3 border-b border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 bg-slate-950/40">
             <div className="flex items-center gap-2 font-mono">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
-              <span>Yjs CRDT Vector State Active • Zero-Conflict Merge</span>
+              <span>{wt.vectorStateActive}</span>
             </div>
 
             <div className="flex items-center gap-4 font-mono">
               <span className="hidden md:flex items-center gap-1.5 text-cyan-300">
                 <Gauge className="h-3.5 w-3.5" />
-                {telemetry.binaryBytes} B binary ({bandwidthSavedPct}% saved vs JSON)
+                {telemetry.binaryBytes} B {wt.binaryLabel} ({bandwidthSavedPct}% {wt.savedVsJson})
               </span>
               <span>
-                {wordCount} words • {content.length} chars
+                {wordCount} {wt.wordsLabel} • {content.length} {wt.charsLabel}
               </span>
             </div>
           </div>
@@ -689,7 +692,7 @@ export default function DocumentEditorPage() {
               onClick={handleCursorActivity}
               onKeyUp={handleCursorActivity}
               onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-              placeholder="Start typing here... Open this same document in another browser tab to see live floating multiplayer cursors, binary telemetry, and CRDT undo/redo in action."
+              placeholder={wt.editorPlaceholder}
               className="relative z-10 w-full h-full min-h-[520px] p-6 sm:p-8 bg-transparent text-slate-100 placeholder-slate-600 text-sm sm:text-base leading-relaxed font-mono focus:outline-none resize-none"
             />
           </div>

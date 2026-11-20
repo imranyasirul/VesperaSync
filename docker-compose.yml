@@ -1,26 +1,39 @@
+version: "3.9"
+
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: covalent-postgres
-    restart: always
+    container_name: vesperasync-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: covalent
-      POSTGRES_PASSWORD: covalent_secret_password
-      POSTGRES_DB: covalent_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: vesperasync
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - vesperasync_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
-    container_name: covalent-redis
-    restart: always
+    container_name: vesperasync-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - vesperasync_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  postgres_data:
-  redis_data:
+  vesperasync_pgdata:
+  vesperasync_redisdata:
