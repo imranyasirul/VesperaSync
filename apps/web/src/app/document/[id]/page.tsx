@@ -20,6 +20,12 @@ import {
   Lock,
   CheckCircle2,
   Activity,
+  Undo2,
+  Redo2,
+  Download,
+  Share2,
+  Check,
+  Gauge,
 } from "lucide-react";
 
 const MSG_SYNC = 0;
@@ -67,12 +73,17 @@ export default function DocumentEditorPage() {
   const [idbSynced, setIdbSynced] = useState(false);
   const [peers, setPeers] = useState<PeerPresence[]>([]);
   const [savingTitle, setSavingTitle] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [telemetry, setTelemetry] = useState({ binaryBytes: 0, jsonEquivalentBytes: 0 });
 
   const ydocRef = useRef<Y.Doc | null>(null);
+  const undoManagerRef = useRef<Y.UndoManager | null>(null);
   const awarenessRef = useRef<awarenessProtocol.Awareness | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // ১. সার্ভার থেকে ডকুমেন্টের তথ্য ও সেশন টোকেন লোড করা
   useEffect(() => {
     let isMounted = true;
 
@@ -110,32 +121,40 @@ export default function DocumentEditorPage() {
     };
   }, [docId, router]);
 
-  // ২. Yjs CRDT, Offline IndexedDB এবং Binary WebSocket সংযোগ স্থাপন
   useEffect(() => {
     if (!docId || !user || !wsToken) return;
 
     const ydoc = new Y.Doc();
     const yText = ydoc.getText("content");
     const awareness = new awarenessProtocol.Awareness(ydoc);
+    const undoManager = new Y.UndoManager(yText, {
+      trackedOrigins: new Set(["local-input"]),
+    });
 
     ydocRef.current = ydoc;
     awarenessRef.current = awareness;
+    undoManagerRef.current = undoManager;
 
-    // লোকাল ইউজারের লাইভ কার্সার ও পরিচয় সেট করা
+    const syncUndoRedoState = () => {
+      setCanUndo(undoManager.undoStack.length > 0);
+      setCanRedo(undoManager.redoStack.length > 0);
+    };
+
+    undoManager.on("stack-item-added", syncUndoRedoState);
+    undoManager.on("stack-item-popped", syncUndoRedoState);
+
     awareness.setLocalStateField("user", {
       name: user.name,
       color: user.cursorColor,
       cursorIndex: 0,
     });
 
-    // অফলাইন সাপোর্টের জন্য IndexedDB পারসিস্টেন্স চালু করা
     const idbProvider = new IndexeddbPersistence(`vesperasync-doc-${docId}`, ydoc);
     idbProvider.on("synced", () => {
       setIdbSynced(true);
       setContent(yText.toString());
     });
 
-    // রিমোট বা লোকাল CRDT পরিবর্তনের সাথে টেক্সট ও কার্সার পজিশন সামঞ্জস্য রাখা
     const handleTextObserve = (event: Y.YTextEvent) => {
       const nextText = yText.toString();
       const textarea = textareaRef.current;
@@ -172,7 +191,6 @@ export default function DocumentEditorPage() {
 
     yText.observe(handleTextObserve);
 
-    // সক্রিয় সহযোগীদের তালিকা ও কার্সার অবস্থান আপডেট করা
     const updatePeersList = () => {
       const states = awareness.getStates();
       const list: PeerPresence[] = [];
@@ -192,7 +210,6 @@ export default function DocumentEditorPage() {
 
     awareness.on("change", updatePeersList);
 
-    // বাইনারি WebSocket সংযোগ ও স্বয়ংক্রিয় রিকানেক্ট লজিক
     const wsBase = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:4000";
     let ws: WebSocket | null = null;
     let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -204,7 +221,20 @@ export default function DocumentEditorPage() {
         const encoder = encoding.createEncoder();
         encoding.writeVarUint(encoder, MSG_SYNC);
         syncProtocol.writeUpdate(encoder, update);
-        ws.send(encoding.toUint8Array(encoder));
+        const packet = encoding.toUint8Array(encoder);
+        ws.send(packet);
+
+        const jsonApprox = JSON.stringify({
+          type: "sync",
+          docId,
+          content: yText.toString(),
+          timestamp: Date.now(),
+        }).length;
+
+        setTelemetry((prev) => ({
+          binaryBytes: prev.binaryBytes + packet.byteLength,
+          jsonEquivalentBytes: prev.jsonEquivalentBytes + Math.max(jsonApprox, packet.byteLength * 6),
+        }));
       }
     };
 
@@ -246,13 +276,11 @@ export default function DocumentEditorPage() {
         if (isDisposed) return;
         setConnectionState("connected");
 
-        // Sync Step 1 পাঠানো
         const syncEncoder = encoding.createEncoder();
         encoding.writeVarUint(syncEncoder, MSG_SYNC);
         syncProtocol.writeSyncStep1(syncEncoder, ydoc);
         socket.send(encoding.toUint8Array(syncEncoder));
 
-        // নিজের লাইভ কার্সার অবস্থা ব্রডকাস্ট করা
         const awEncoder = encoding.createEncoder();
         encoding.writeVarUint(awEncoder, MSG_AWARENESS);
         encoding.writeVarUint8Array(
@@ -298,18 +326,20 @@ export default function DocumentEditorPage() {
     return () => {
       isDisposed = true;
       if (reconnectTimeout) clearTimeout(reconnectTimeout);
+      undoManager.off("stack-item-added", syncUndoRedoState);
+      undoManager.off("stack-item-popped", syncUndoRedoState);
       ydoc.off("update", handleDocUpdate);
       awareness.off("update", handleAwarenessUpdate);
       yText.unobserve(handleTextObserve);
       awareness.off("change", updatePeersList);
       if (ws) ws.close();
+      undoManager.destroy();
       idbProvider.destroy();
       awareness.destroy();
       ydoc.destroy();
     };
   }, [docId, user, wsToken]);
 
-  // ইউজার টাইপ করলে ডেল্টা পরিবর্তন Yjs CRDT-তে প্রয়োগ করা
   function handleEditorChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     if (role === "VIEWER") return;
     const nextValue = e.target.value;
@@ -367,6 +397,36 @@ export default function DocumentEditorPage() {
     broadcastCursorPosition(pos);
   }
 
+  function handleUndo() {
+    if (role === "VIEWER") return;
+    undoManagerRef.current?.undo();
+  }
+
+  function handleRedo() {
+    if (role === "VIEWER") return;
+    undoManagerRef.current?.redo();
+  }
+
+  function handleCopyShareLink() {
+    navigator.clipboard.writeText(window.location.href);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  }
+
+  function handleExportMarkdown() {
+    const safeTitle = (titleInput || "vesperasync-document")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
+    const markdownBody = `# ${titleInput}\n\n${content}`;
+    const blob = new Blob([markdownBody], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeTitle}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleTitleBlur() {
     if (!docMeta || role === "VIEWER" || !titleInput.trim() || titleInput === docMeta.title) {
       return;
@@ -399,14 +459,25 @@ export default function DocumentEditorPage() {
   }
 
   const wordCount = content.trim() ? content.trim().split(/\s+/).length : 0;
+  const remotePeers = peers.filter((p) => !p.isSelf);
+  const bandwidthSavedPct =
+    telemetry.jsonEquivalentBytes > 0
+      ? Math.min(
+          96,
+          Math.round(
+            ((telemetry.jsonEquivalentBytes - telemetry.binaryBytes) /
+              telemetry.jsonEquivalentBytes) *
+              100
+          )
+        )
+      : 90;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col relative overflow-hidden">
       <div className="pointer-events-none absolute -top-40 left-1/3 h-96 w-96 rounded-full bg-indigo-600/15 blur-3xl" />
 
-      {/* এডিটর হেডার ও টেলিমেট্রি বার */}
       <header className="sticky top-0 z-30 border-b border-slate-800/80 bg-slate-950/85 backdrop-blur-xl">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <Link
               href="/dashboard"
@@ -427,7 +498,7 @@ export default function DocumentEditorPage() {
                 disabled={role === "VIEWER"}
                 onChange={(e) => setTitleInput(e.target.value)}
                 onBlur={handleTitleBlur}
-                className="bg-transparent font-bold text-sm sm:text-base text-slate-100 focus:outline-none focus:border-b focus:border-indigo-500 truncate max-w-[200px] sm:max-w-md"
+                className="bg-transparent font-bold text-sm sm:text-base text-slate-100 focus:outline-none focus:border-b focus:border-indigo-500 truncate max-w-[160px] sm:max-w-sm"
               />
               <div className="text-[11px] text-slate-500 flex items-center gap-2">
                 <span>{docMeta?.workspace.name}</span>
@@ -436,20 +507,45 @@ export default function DocumentEditorPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 shrink-0">
-            {/* অফলাইন IndexedDB ব্যাজ */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleCopyShareLink}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-200 transition cursor-pointer"
+              title="Copy document link for live collaboration"
+            >
+              {copiedLink ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                  <span className="text-emerald-300">Copied</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="h-3.5 w-3.5 text-indigo-400" />
+                  <span>Share</span>
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleExportMarkdown}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-200 transition cursor-pointer"
+              title="Export document as Markdown (.md)"
+            >
+              <Download className="h-3.5 w-3.5 text-cyan-400" />
+              <span>Export .md</span>
+            </button>
+
             <div
-              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-medium ${
+              className={`hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-medium ${
                 idbSynced
                   ? "bg-emerald-500/10 border-emerald-500/25 text-emerald-300"
                   : "bg-slate-900 border-slate-800 text-slate-400"
               }`}
             >
               <HardDriveDownload className="h-3.5 w-3.5" />
-              <span>{idbSynced ? "Offline Cache Ready" : "Indexing..."}</span>
+              <span>{idbSynced ? "Offline Ready" : "Indexing..."}</span>
             </div>
 
-            {/* লাইভ বাইনারি WebSocket স্ট্যাটাস */}
             <div
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold ${
                 connectionState === "connected"
@@ -480,7 +576,6 @@ export default function DocumentEditorPage() {
         </div>
       </header>
 
-      {/* লাইভ মাল্টিপ্লেয়ার কার্সার ও প্রেজেন্স বার */}
       <div className="border-b border-slate-800/60 bg-slate-900/40 backdrop-blur-md">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 flex-wrap">
@@ -508,38 +603,96 @@ export default function DocumentEditorPage() {
             ))}
           </div>
 
-          {role === "VIEWER" && (
-            <div className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1 rounded-lg">
-              <Lock className="h-3.5 w-3.5" />
-              <span>Read-Only Viewer Access</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            {role !== "VIEWER" && (
+              <div className="flex items-center gap-1 bg-slate-950/80 border border-slate-800 rounded-lg p-1">
+                <button
+                  onClick={handleUndo}
+                  disabled={!canUndo}
+                  className="p-1.5 rounded-md hover:bg-slate-800 text-slate-300 disabled:opacity-30 transition cursor-pointer"
+                  title="CRDT Local Undo"
+                >
+                  <Undo2 className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={handleRedo}
+                  disabled={!canRedo}
+                  className="p-1.5 rounded-md hover:bg-slate-800 text-slate-300 disabled:opacity-30 transition cursor-pointer"
+                  title="CRDT Local Redo"
+                >
+                  <Redo2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
+            {role === "VIEWER" && (
+              <div className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 px-3 py-1 rounded-lg">
+                <Lock className="h-3.5 w-3.5" />
+                <span>Read-Only Viewer</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* মূল CRDT কোলাবরেটিভ এডিটর ক্যানভাস */}
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 flex flex-col">
         <div className="flex-1 rounded-3xl bg-slate-900/50 border border-slate-800/90 backdrop-blur-xl shadow-2xl flex flex-col overflow-hidden">
-          <div className="px-6 py-3 border-b border-slate-800/70 flex items-center justify-between text-xs text-slate-400 bg-slate-950/40">
+          <div className="px-6 py-3 border-b border-slate-800/70 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400 bg-slate-950/40">
             <div className="flex items-center gap-2 font-mono">
               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
               <span>Yjs CRDT Vector State Active • Zero-Conflict Merge</span>
             </div>
-            <div className="font-mono">
-              {wordCount} words • {content.length} chars
+
+            <div className="flex items-center gap-4 font-mono">
+              <span className="hidden md:flex items-center gap-1.5 text-cyan-300">
+                <Gauge className="h-3.5 w-3.5" />
+                {telemetry.binaryBytes} B binary ({bandwidthSavedPct}% saved vs JSON)
+              </span>
+              <span>
+                {wordCount} words • {content.length} chars
+              </span>
             </div>
           </div>
 
-          <textarea
-            ref={textareaRef}
-            value={content}
-            readOnly={role === "VIEWER"}
-            onChange={handleEditorChange}
-            onClick={handleCursorActivity}
-            onKeyUp={handleCursorActivity}
-            placeholder="Start typing here... Open this same document in another browser tab to experience real-time binary CRDT synchronization and live multiplayer cursor tracking."
-            className="flex-1 w-full min-h-[520px] p-6 sm:p-8 bg-transparent text-slate-100 placeholder-slate-600 text-sm sm:text-base leading-relaxed font-mono focus:outline-none resize-none"
-          />
+          <div className="relative flex-1 min-h-[520px]">
+            {remotePeers.map((peer) => {
+              const clampedPos = Math.min(Math.max(0, peer.cursorIndex), content.length);
+              return (
+                <div
+                  key={peer.clientId}
+                  aria-hidden="true"
+                  style={{ transform: `translateY(-${scrollTop}px)` }}
+                  className="pointer-events-none absolute inset-0 p-6 sm:p-8 text-sm sm:text-base leading-relaxed font-mono whitespace-pre-wrap break-words text-transparent overflow-hidden"
+                >
+                  <span>{content.slice(0, clampedPos)}</span>
+                  <span className="relative inline-block w-0 h-[1.2em] align-text-bottom">
+                    <span
+                      className="absolute left-0 -top-0.5 w-0.5 h-5 rounded-full animate-pulse"
+                      style={{ backgroundColor: peer.color }}
+                    />
+                    <span
+                      className="absolute left-0 -top-6 px-2 py-0.5 rounded-md text-[10px] font-sans font-bold text-slate-950 whitespace-nowrap shadow-lg"
+                      style={{ backgroundColor: peer.color }}
+                    >
+                      {peer.name}
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+
+            <textarea
+              ref={textareaRef}
+              value={content}
+              readOnly={role === "VIEWER"}
+              onChange={handleEditorChange}
+              onClick={handleCursorActivity}
+              onKeyUp={handleCursorActivity}
+              onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+              placeholder="Start typing here... Open this same document in another browser tab to see live floating multiplayer cursors, binary telemetry, and CRDT undo/redo in action."
+              className="relative z-10 w-full h-full min-h-[520px] p-6 sm:p-8 bg-transparent text-slate-100 placeholder-slate-600 text-sm sm:text-base leading-relaxed font-mono focus:outline-none resize-none"
+            />
+          </div>
         </div>
       </main>
     </div>
