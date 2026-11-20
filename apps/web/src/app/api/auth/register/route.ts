@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
-import { prisma } from "@covalent/database";
+import { prisma, Prisma } from "@covalent/database";
 import { signToken } from "@/lib/auth";
 
 const CURSOR_COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EC4899", "#8B5CF6", "#06B6D4"];
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
     const passwordHash = await bcrypt.hash(password, 10);
     const cursorColor = CURSOR_COLORS[Math.floor(Math.random() * CURSOR_COLORS.length)];
 
-    const user = await prisma.$transaction(async (tx) => {
+    const user = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const createdUser = await tx.user.create({
         data: { name, email, passwordHash, cursorColor },
       });
@@ -32,14 +32,14 @@ export async function POST(req: Request) {
       const slug = `${name.toLowerCase().replace(/[^a-z0-9]/g, "-")}-${Date.now().toString().slice(-4)}`;
       const workspace = await tx.workspace.create({
         data: {
-          name: `${name}-এর ওয়ার্কস্পেস`,
+          name: `${name} — VesperaSync Space`,
           slug,
           members: {
             create: { userId: createdUser.id, role: "OWNER" },
           },
           documents: {
             create: {
-              title: "প্রজেক্ট আর্কিটেকচার ও রোডম্যাপ",
+              title: "VesperaSync System Architecture & CRDT Notes",
             },
           },
         },
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
           action: "WORKSPACE_CREATED",
           workspaceId: workspace.id,
           actorId: createdUser.id,
-          metadata: { source: "registration" },
+          metadata: { source: "registration", brand: "VesperaSync" },
         },
       });
 
@@ -65,7 +65,7 @@ export async function POST(req: Request) {
     });
 
     const response = NextResponse.json({ success: true, token });
-    response.cookies.set("covalent_token", token, {
+    response.cookies.set("vesperasync_token", token, {
       httpOnly: true,
       sameSite: "lax",
       path: "/",

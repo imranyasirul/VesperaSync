@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 
 const secret = new TextEncoder().encode(
-  process.env.JWT_SECRET || "covalent_super_secret_jwt_key_2026"
+  process.env.JWT_SECRET || "vesperasync_super_secret_jwt_key_2026"
 );
 
 export interface SessionPayload {
@@ -31,7 +31,7 @@ export async function verifyToken(token: string): Promise<SessionPayload | null>
 
 export async function getSession(): Promise<SessionPayload | null> {
   const cookieStore = await cookies();
-  const token = cookieStore.get("covalent_token")?.value;
+  const token = cookieStore.get("vesperasync_token")?.value;
   if (!token) return null;
   return await verifyToken(token);
 }

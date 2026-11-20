@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     });
 
     const response = NextResponse.json({ success: true, token });
-    response.cookies.set("covalent_token", token, {
+    response.cookies.set("vesperasync_token", token, {
       httpOnly: true,
       sameSite: "lax",
       path: "/",
