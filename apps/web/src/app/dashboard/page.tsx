@@ -14,6 +14,8 @@ import {
   Clock,
   Search,
   ArrowUpRight,
+  UserPlus,
+  Trash2,
 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { LanguageSelector } from "@/components/LanguageSelector";
@@ -65,6 +67,14 @@ export default function DashboardPage() {
   const [newDocTitle, setNewDocTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [creatingDoc, setCreatingDoc] = useState(false);
+
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"EDITOR" | "VIEWER">("EDITOR");
+  const [inviting, setInviting] = useState(false);
+  const [memberFeedback, setMemberFeedback] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -133,6 +143,133 @@ export default function DashboardPage() {
       }
     } finally {
       setCreatingDoc(false);
+    }
+  }
+
+  async function handleInviteMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail.trim() || !activeWsId) return;
+    setInviting(true);
+    setMemberFeedback(null);
+
+    try {
+      const res = await fetch("/api/workspaces/members", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workspaceId: activeWsId,
+          email: inviteEmail,
+          role: inviteRole,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setMemberFeedback({
+          type: "error",
+          text: data.error || "সদস্য যুক্ত করা যায়নি",
+        });
+        return;
+      }
+
+      setWorkspaces((prev) =>
+        prev.map((ws) =>
+          ws.id === activeWsId
+            ? {
+                ...ws,
+                members: [...ws.members, data.member],
+                auditLogs: [
+                  {
+                    id: `local-${Date.now()}`,
+                    action: "MEMBER_INVITED",
+                    createdAt: new Date().toISOString(),
+                    actor: { name: userName },
+                  },
+                  ...ws.auditLogs,
+                ],
+              }
+            : ws
+        )
+      );
+
+      setInviteEmail("");
+      setMemberFeedback({
+        type: "success",
+        text: `${data.member.user.name} (${inviteRole}) যুক্ত হয়েছেন`,
+      });
+      setTimeout(() => setMemberFeedback(null), 3500);
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function handleRoleChange(memberId: string, nextRole: string) {
+    if (!activeWsId) return;
+    const res = await fetch("/api/workspaces/members", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: activeWsId,
+        memberId,
+        role: nextRole,
+      }),
+    });
+
+    if (res.ok) {
+      const { member } = await res.json();
+      setWorkspaces((prev) =>
+        prev.map((ws) =>
+          ws.id === activeWsId
+            ? {
+                ...ws,
+                members: ws.members.map((m) => (m.id === memberId ? member : m)),
+                auditLogs: [
+                  {
+                    id: `local-${Date.now()}`,
+                    action: "MEMBER_ROLE_UPDATED",
+                    createdAt: new Date().toISOString(),
+                    actor: { name: userName },
+                  },
+                  ...ws.auditLogs,
+                ],
+              }
+            : ws
+        )
+      );
+    }
+  }
+
+  async function handleRemoveMember(memberId: string) {
+    if (!activeWsId) return;
+    const res = await fetch("/api/workspaces/members", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        workspaceId: activeWsId,
+        memberId,
+      }),
+    });
+
+    if (res.ok) {
+      setWorkspaces((prev) =>
+        prev.map((ws) =>
+          ws.id === activeWsId
+            ? {
+                ...ws,
+                members: ws.members.filter((m) => m.id !== memberId),
+                auditLogs: [
+                  {
+                    id: `local-${Date.now()}`,
+                    action: "MEMBER_REMOVED",
+                    createdAt: new Date().toISOString(),
+                    actor: { name: userName },
+                  },
+                  ...ws.auditLogs,
+                ],
+              }
+            : ws
+        )
+      );
     }
   }
 
@@ -317,22 +454,98 @@ export default function DashboardPage() {
                 <Users className="h-4 w-4 text-emerald-400" />
                 {labels.teamMembers || "Workspace Members"}
               </h2>
-              <div className="space-y-2.5">
+
+              {currentWs?.myRole !== "VIEWER" && (
+                <form onSubmit={handleInviteMember} className="space-y-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="email"
+                      required
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="colleague@company.com"
+                      className="flex-1 min-w-0 px-3 py-2 rounded-xl bg-slate-950/90 border border-slate-800 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                    />
+                    <select
+                      value={inviteRole}
+                      onChange={(e) =>
+                        setInviteRole(e.target.value as "EDITOR" | "VIEWER")
+                      }
+                      className="px-2 py-2 rounded-xl bg-slate-950/90 border border-slate-800 text-[11px] font-mono text-slate-200 focus:outline-none"
+                    >
+                      <option value="EDITOR">EDITOR</option>
+                      <option value="VIEWER">VIEWER</option>
+                    </select>
+                    <button
+                      type="submit"
+                      disabled={inviting}
+                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-50 shrink-0"
+                      title="Invite Member"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+
+                  {memberFeedback && (
+                    <div
+                      className={`text-[11px] px-2.5 py-1.5 rounded-lg ${
+                        memberFeedback.type === "success"
+                          ? "bg-emerald-500/10 text-emerald-300 border border-emerald-500/20"
+                          : "bg-rose-500/10 text-rose-300 border border-rose-500/20"
+                      }`}
+                    >
+                      {memberFeedback.text}
+                    </div>
+                  )}
+                </form>
+              )}
+
+              <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
                 {currentWs?.members.map((m) => (
                   <div
                     key={m.id}
-                    className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 text-xs"
+                    className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 text-xs"
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <span
-                        className="h-2.5 w-2.5 rounded-full"
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
                         style={{ backgroundColor: m.user.cursorColor }}
                       />
-                      <span className="font-medium text-slate-200">{m.user.name}</span>
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-200 truncate">
+                          {m.user.name}
+                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">
+                          {m.user.email}
+                        </div>
+                      </div>
                     </div>
-                    <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-mono text-slate-300">
-                      {m.role}
-                    </span>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {currentWs.myRole === "OWNER" && m.role !== "OWNER" ? (
+                        <>
+                          <select
+                            value={m.role}
+                            onChange={(e) => handleRoleChange(m.id, e.target.value)}
+                            className="px-1.5 py-0.5 rounded-md bg-slate-800 text-[10px] font-mono text-slate-200 border border-slate-700 focus:outline-none cursor-pointer"
+                          >
+                            <option value="EDITOR">EDITOR</option>
+                            <option value="VIEWER">VIEWER</option>
+                          </select>
+                          <button
+                            onClick={() => handleRemoveMember(m.id)}
+                            className="p-1 rounded-md hover:bg-rose-950/60 text-slate-400 hover:text-rose-400 transition cursor-pointer"
+                            title="Remove Member"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-slate-800 text-[10px] font-mono text-slate-300">
+                          {m.role}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
